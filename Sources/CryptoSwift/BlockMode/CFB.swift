@@ -1,5 +1,4 @@
 //
-//  CFB.swift
 //  CryptoSwift
 //
 //  Copyright (C) 2014-2017 Marcin Krzyżanowski <marcin@krzyzanowskim.com>
@@ -16,6 +15,28 @@
 
 //  Cipher feedback (CFB)
 //
+
+public struct CFB: BlockMode {
+    public enum Error: Swift.Error {
+        /// Invalid IV
+        case invalidInitializationVector
+    }
+
+    public let options: BlockModeOptions = [.initializationVectorRequired, .useEncryptToDecrypt]
+    private let iv: Array<UInt8>
+
+    public init(iv: Array<UInt8>) {
+        self.iv = iv
+    }
+
+    public func worker(blockSize: Int, cipherOperation: @escaping CipherOperationOnBlock) throws -> BlockModeWorker {
+        if iv.count != blockSize {
+            throw Error.invalidInitializationVector
+        }
+
+        return CFBModeWorker(iv: iv.slice, cipherOperation: cipherOperation)
+    }
+}
 
 struct CFBModeWorker: BlockModeWorker {
     let cipherOperation: CipherOperationOnBlock

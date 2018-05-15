@@ -1,5 +1,4 @@
 //
-//  Cryptors.swift
 //  CryptoSwift
 //
 //  Copyright (C) 2014-2017 Marcin Krzyżanowski <marcin@krzyzanowskim.com>
@@ -14,10 +13,10 @@
 //  - This notice may not be removed or altered from any source or binary distribution.
 //
 
-#if os(Linux) || os(Android) || os(FreeBSD)
-    import Glibc
+#if canImport(Darwin)
+import Darwin
 #else
-    import Darwin
+import Glibc
 #endif
 
 /// Worker cryptor/decryptor of `Updatable` types
@@ -36,7 +35,6 @@ public protocol Cryptors: class {
 }
 
 extension Cryptors {
-
     public static func randomIV(_ blockSize: Int) -> Array<UInt8> {
         var randomIV: Array<UInt8> = Array<UInt8>()
         randomIV.reserveCapacity(blockSize)

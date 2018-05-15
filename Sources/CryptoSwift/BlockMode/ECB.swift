@@ -1,5 +1,4 @@
 //
-//  BlockMode.swift
 //  CryptoSwift
 //
 //  Copyright (C) 2014-2017 Marcin Krzyżanowski <marcin@krzyzanowskim.com>
@@ -16,6 +15,17 @@
 
 //  Electronic codebook (ECB)
 //
+
+public struct ECB: BlockMode {
+    public let options: BlockModeOptions = .paddingRequired
+
+    public init() {
+    }
+
+    public func worker(blockSize: Int, cipherOperation: @escaping CipherOperationOnBlock) throws -> BlockModeWorker {
+        return ECBModeWorker(cipherOperation: cipherOperation)
+    }
+}
 
 struct ECBModeWorker: BlockModeWorker {
     typealias Element = Array<UInt8>

@@ -1,5 +1,4 @@
 //
-//  AES.swift
 //  CryptoSwift
 //
 //  Copyright (C) 2014-2017 Marcin Krzyżanowski <marcin@krzyzanowskim.com>
@@ -15,6 +14,7 @@
 //
 
 // MARK: Cryptors
+
 extension AES: Cryptors {
     public func makeEncryptor() throws -> AES.Encryptor {
         return try AES.Encryptor(aes: self)
@@ -26,18 +26,18 @@ extension AES: Cryptors {
 }
 
 // MARK: Encryptor
+
 extension AES {
     public struct Encryptor: Updatable {
         private var worker: BlockModeWorker
         private let padding: Padding
+        // Accumulated bytes. Not all processed bytes.
         private var accumulated = Array<UInt8>()
         private var processedBytesTotalCount: Int = 0
-        private let paddingRequired: Bool
 
         init(aes: AES) throws {
             padding = aes.padding
             worker = try aes.blockMode.worker(blockSize: AES.blockSize, cipherOperation: aes.encrypt)
-            paddingRequired = aes.blockMode.options.contains(.paddingRequired)
         }
 
         public mutating func update(withBytes bytes: ArraySlice<UInt8>, isLast: Bool = false) throws -> Array<UInt8> {
@@ -57,20 +57,24 @@ extension AES {
             }
             accumulated.removeFirst(processedBytes)
             processedBytesTotalCount += processedBytes
+
+            if var finalizingWorker = worker as? BlockModeWorkerFinalizing, isLast == true {
+                encrypted = try finalizingWorker.finalize(encrypt: encrypted.slice)
+            }
+
             return encrypted
         }
     }
 }
 
 // MARK: Decryptor
-extension AES {
 
+extension AES {
     public struct Decryptor: RandomAccessCryptor {
         private var worker: BlockModeWorker
         private let padding: Padding
         private var accumulated = Array<UInt8>()
         private var processedBytesTotalCount: Int = 0
-        private let paddingRequired: Bool
 
         private var offset: Int = 0
         private var offsetToRemove: Int = 0
@@ -78,19 +82,15 @@ extension AES {
         init(aes: AES) throws {
             padding = aes.padding
 
-            switch aes.blockMode {
-            case .CFB, .OFB, .CTR:
-                // CFB, OFB, CTR uses encryptBlock to decrypt
+            if aes.blockMode.options.contains(.useEncryptToDecrypt) {
                 worker = try aes.blockMode.worker(blockSize: AES.blockSize, cipherOperation: aes.encrypt)
-            default:
+            } else {
                 worker = try aes.blockMode.worker(blockSize: AES.blockSize, cipherOperation: aes.decrypt)
             }
-
-            paddingRequired = aes.blockMode.options.contains(.paddingRequired)
         }
 
         public mutating func update(withBytes bytes: ArraySlice<UInt8>, isLast: Bool = false) throws -> Array<UInt8> {
-            // prepend "offset" number of bytes at the begining
+            // prepend "offset" number of bytes at the beginning
             if offset > 0 {
                 accumulated += Array<UInt8>(repeating: 0, count: offset) + bytes
                 offsetToRemove = offset
@@ -101,14 +101,25 @@ extension AES {
 
             var processedBytes = 0
             var plaintext = Array<UInt8>(reserveCapacity: accumulated.count)
-            for chunk in accumulated.batched(by: AES.blockSize) {
+            for var chunk in accumulated.batched(by: AES.blockSize) {
                 if isLast || (accumulated.count - processedBytes) >= AES.blockSize {
-                    plaintext += worker.decrypt(chunk)
+
+                    if isLast, var finalizingWorker = worker as? BlockModeWorkerFinalizing {
+                        chunk = try finalizingWorker.willDecryptLast(ciphertext: chunk)
+                    }
+
+                    if !chunk.isEmpty {
+                        plaintext += worker.decrypt(chunk)
+                    }
 
                     // remove "offset" from the beginning of first chunk
                     if offsetToRemove > 0 {
                         plaintext.removeFirst(offsetToRemove)
                         offsetToRemove = 0
+                    }
+
+                    if var finalizingWorker = worker as? BlockModeWorkerFinalizing, isLast == true {
+                        plaintext = try finalizingWorker.didDecryptLast(plaintext: plaintext.slice)
                     }
 
                     processedBytes += chunk.count
